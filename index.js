@@ -79,17 +79,6 @@ const item2 = new Item({
 
 app.use(express.static(path.resolve(__dirname, '../client/build')));
 
-// app.get('*', function (_, res) {
-//   res.sendFile(
-//     path.join(__dirname, '../client/build/index.html'),
-//     function (err) {
-//       if (err) {
-//         res.status(500).send(err);
-//       }
-//     }
-//   );
-// });
-
 app.get('/api', (req, res) => {
   Item.find({ isSold: false }, function (err, foundItems) {
     if (foundItems) {
@@ -119,11 +108,16 @@ app.post('/new-item', (req, res) => {
     !err
       ? User.findOne({ _id: userId }, (err, foundUser) => {
           !err &&
-            User.updateOne(
+            User.findOneAndUpdate(
+              //Adding new item in Seller's listings page
               { _id: foundUser._id },
               { listedItems: [...foundUser.listedItems, newItem] },
-              (err) => {
-                !err ? console.log('superFunPoop') : console.log(err + 'poop');
+              { returnOriginal: false },
+              (err, updatedUser) => {
+                !err
+                  ? res.send(JSON.stringify(updatedUser)) &&
+                    console.log('superFunPoop')
+                  : res.send('poop') && console.log(err + 'poop');
               }
             );
         })
@@ -137,23 +131,47 @@ app.post('/buy-item', (req, res) => {
   const userId = data.userId;
   // console.log(data);
 
-  Item.updateOne({ _id: itemId }, { isSold: true }, (err) =>
-    console.log(!err ? '' : err)
-  ) &&
-    Item.findOne({ _id: itemId }, (err, foundItem) => {
-      User.findOne({ _id: userId }, (err, foundUser) => {
-        !err &&
-          User.updateOne(
-            { _id: foundUser._id },
-            { boughtItems: [...foundUser.boughtItems, foundItem] },
-            (err) => {
-              !err
-                ? console.log('superFunPoopaMania')
-                : console.log(err + 'poop');
-            }
-          );
-      });
-    });
+  //Setting Sell status to Sold in Seller's MyAccount Listing Page
+  Item.findOne({ _id: itemId }, (err, foundedItem) => {
+    User.findOne(
+      { listedItems: { $in: [foundedItem] } },
+      (err, foundedUser) => {
+        User.findOneAndUpdate(
+          { _id: foundedUser._id, 'listedItems._id': itemId },
+          { $set: { 'listedItems.$.isSold': true } },
+          { returnOriginal: false },
+          (err, updatedUser) => {
+            !err ? '' : console.log(err);
+          }
+        );
+      }
+    );
+  }) &&
+    Item.findOneAndUpdate(
+      //Setting Item sell status to Sold in ItemsDB
+      { _id: itemId },
+      { isSold: true },
+      { returnOriginal: false },
+      (err, updatedItem) => {
+        !err
+          ? User.findOne({ _id: userId }, (err, foundUser) => {
+              !err &&
+                User.findOneAndUpdate(
+                  //Adding New Item to Buyer's Bought items list
+                  { _id: foundUser._id },
+                  { boughtItems: [...foundUser.boughtItems, updatedItem] },
+                  { returnOriginal: false },
+                  (err, updatedUser) => {
+                    !err
+                      ? res.send(JSON.stringify(updatedUser)) &&
+                        console.log('superFunPoopaMania')
+                      : res.send('poop') && console.log(err + 'poop');
+                  }
+                );
+            })
+          : console.log(err);
+      }
+    );
 });
 
 app.post('/login', (req, res) => {
