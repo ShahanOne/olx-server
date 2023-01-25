@@ -52,6 +52,7 @@ const userSchema = new mongoose.Schema({
   },
   boughtItems: [itemSchema],
   listedItems: [itemSchema],
+  cartItems: [itemSchema],
 });
 
 //Model
@@ -167,11 +168,45 @@ app.post('/buy-item', (req, res) => {
                         console.log('superFunPoopaMania')
                       : res.send('poop') && console.log(err + 'poop');
                   }
+                ) &&
+                User.findOneAndUpdate(
+                  { _id: userId },
+                  { $pull: { 'foundUser.cartItems': { _id: itemId } } },
+                  { returnOriginal: false },
+                  (err, updated) =>
+                    !err ? console.log('success') : console.log(err)
                 );
             })
           : console.log(err);
       }
+    ) &&
+    User.findOneAndUpdate(
+      { _id: userId },
+      { $pull: { cartItems: { _id: itemId } } },
+      { returnOriginal: false },
+      (err, updated) => (!err ? console.log('success') : console.log(err))
     );
+});
+app.post('/add-to-cart', (req, res) => {
+  const data = req.body[0];
+  const itemId = data.itemId;
+  const userId = data.userId;
+  // console.log(data);
+
+  Item.findOne({ _id: itemId }, (err, foundItem) => {
+    User.findOne({ _id: userId }, (err, foundUser) => {
+      User.findOneAndUpdate(
+        { _id: foundUser._id },
+        { cartItems: [...foundUser.cartItems, foundItem] },
+        { returnOriginal: false },
+        (err, updatedUser) => {
+          !err
+            ? res.send(JSON.stringify(updatedUser)) && console.log('done')
+            : res.send('poop') && console.log(err);
+        }
+      );
+    });
+  });
 });
 
 app.post('/login', (req, res) => {
