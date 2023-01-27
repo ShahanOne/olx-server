@@ -179,12 +179,6 @@ app.post('/buy-item', (req, res) => {
             })
           : console.log(err);
       }
-    ) &&
-    User.findOneAndUpdate(
-      { _id: userId },
-      { $pull: { cartItems: { _id: itemId } } },
-      { returnOriginal: false },
-      (err, updated) => (!err ? console.log('success') : console.log(err))
     );
 });
 app.post('/add-to-cart', (req, res) => {
