@@ -38,7 +38,8 @@ const itemSchema = new mongoose.Schema({
     required: true,
   },
   isSold: Boolean,
-  imageUrl: mongoose.SchemaTypes.Url,
+  imageUrl: String,
+  // imageUrl: mongoose.SchemaTypes.Url,
 });
 
 const userSchema = new mongoose.Schema({
