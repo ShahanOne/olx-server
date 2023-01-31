@@ -38,6 +38,7 @@ const itemSchema = new mongoose.Schema({
     required: true,
   },
   isSold: Boolean,
+  description: String,
   imageUrl: String,
   // imageUrl: mongoose.SchemaTypes.Url,
 });
@@ -95,6 +96,7 @@ app.post('/new-item', (req, res) => {
   const itemName = data.itemName;
   const itemPrice = data.itemPrice;
   const itemImgUrl = data.itemImgUrl;
+  const itemDescription = data.itemDescription;
   const userName = data.userName;
   const userId = data.userId;
   // console.log(userName);
@@ -104,6 +106,7 @@ app.post('/new-item', (req, res) => {
     price: itemPrice,
     isSold: false,
     imageUrl: itemImgUrl,
+    description: itemDescription,
   });
 
   newItem.save((err) =>
