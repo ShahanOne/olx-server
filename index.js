@@ -193,18 +193,36 @@ app.post('/wishlist', (req, res) => {
   // console.log(data);
 
   Item.findOne({ _id: itemId }, (err, foundItem) => {
-    User.findOne({ _id: userId }, (err, foundUser) => {
-      User.findOneAndUpdate(
-        { _id: foundUser._id },
-        { wishlist: [...foundUser.wishlist, foundItem] },
-        { returnOriginal: false },
-        (err, updatedUser) => {
-          !err
-            ? res.send(JSON.stringify(updatedUser)) && console.log('done')
-            : res.send('poop') && console.log(err);
-        }
-      );
-    });
+    User.findOne(
+      { _id: userId, wishlist: { $in: [foundItem] } },
+      (err, foundUser) => {
+        foundUser
+          ? User.findOneAndUpdate(
+              { _id: foundUser._id },
+              { $pull: { 'foundUser.wishlist': { _id: itemId } } },
+              { returnOriginal: false },
+              (err, updatedUser) => {
+                !err
+                  ? res.send(JSON.stringify(updatedUser)) &&
+                    console.log('removed from wishlist')
+                  : res.send('poop') && console.log(err);
+              }
+            )
+          : User.findOne({ _id: userId }, (err, foundUser) => {
+              User.findOneAndUpdate(
+                { _id: foundUser._id },
+                { wishlist: [...foundUser.wishlist, foundItem] },
+                { returnOriginal: false },
+                (err, updatedUser) => {
+                  !err
+                    ? res.send(JSON.stringify(updatedUser)) &&
+                      console.log('done')
+                    : res.send('poop') && console.log(err);
+                }
+              );
+            });
+      }
+    );
   });
 });
 
