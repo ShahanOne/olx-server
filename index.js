@@ -176,7 +176,7 @@ app.post('/buy-item', (req, res) => {
                 ) &&
                 User.findOneAndUpdate(
                   { _id: userId },
-                  { $pull: { 'foundUser.cartItems': { _id: itemId } } },
+                  { $pull: { cartItems: { _id: itemId } } },
                   { returnOriginal: false },
                   (err, updated) =>
                     !err ? console.log('success') : console.log(err)
@@ -199,7 +199,7 @@ app.post('/wishlist', (req, res) => {
         foundUser
           ? User.findOneAndUpdate(
               { _id: foundUser._id },
-              { $pull: { 'foundUser.wishlist': { _id: itemId } } },
+              { $pull: { wishlist: { _id: itemId } } },
               { returnOriginal: false },
               (err, updatedUser) => {
                 !err
