@@ -55,6 +55,7 @@ const userSchema = new mongoose.Schema({
   boughtItems: [itemSchema],
   listedItems: [itemSchema],
   cartItems: [itemSchema],
+  wishlist: [itemSchema],
 });
 
 //Model
@@ -185,6 +186,28 @@ app.post('/buy-item', (req, res) => {
       }
     );
 });
+app.post('/wishlist', (req, res) => {
+  const data = req.body[0];
+  const itemId = data.itemId;
+  const userId = data.userId;
+  // console.log(data);
+
+  Item.findOne({ _id: itemId }, (err, foundItem) => {
+    User.findOne({ _id: userId }, (err, foundUser) => {
+      User.findOneAndUpdate(
+        { _id: foundUser._id },
+        { wishlist: [...foundUser.wishlist, foundItem] },
+        { returnOriginal: false },
+        (err, updatedUser) => {
+          !err
+            ? res.send(JSON.stringify(updatedUser)) && console.log('done')
+            : res.send('poop') && console.log(err);
+        }
+      );
+    });
+  });
+});
+
 app.post('/add-to-cart', (req, res) => {
   const data = req.body[0];
   const itemId = data.itemId;
