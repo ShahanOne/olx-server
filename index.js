@@ -7,33 +7,33 @@ mongoose.set('strictQuery', false);
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
 const path = require('path');
-
 const bodyParser = require('body-parser');
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json()); // support json encoded bodies
 const cors = require('cors');
-const { json } = require('body-parser');
-const corsOptions = {
-  origin: '*',
-  credentials: true, //access-control-allow-credentials:true
-  optionSuccessStatus: 200,
-};
 
-app.use(cors(corsOptions));
+// Middleware
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(
+  cors({
+    origin: '*',
+    credentials: true,
+    optionSuccessStatus: 200,
+  })
+);
 
-//Connection
-mongoose.connect(process.env.MONGODB_URI);
+// Database Connection
+mongoose
+  .connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log('MongoDB connected'))
+  .catch((err) => console.error('MongoDB connection error:', err));
 
-//Schema  i.e the structure we want for data
+// Schemas and Models
 const itemSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-  },
-  price: {
-    type: Number,
-    required: true,
-  },
+  name: { type: String, required: true },
+  price: { type: Number, required: true },
   isSold: Boolean,
   description: String,
   imageUrl: String,
@@ -41,249 +41,454 @@ const itemSchema = new mongoose.Schema({
 });
 
 const userSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: true,
-  },
-  password: {
-    type: String,
-    required: true,
-  },
+  username: { type: String, required: true },
+  password: { type: String, required: true },
   boughtItems: [itemSchema],
   listedItems: [itemSchema],
   cartItems: [itemSchema],
   wishlist: [itemSchema],
 });
 
-//Model
 const Item = mongoose.model('Item', itemSchema);
 const User = mongoose.model('User', userSchema);
 
-// console.log(user1);
-const item1 = new Item({
-  //new document in the collection
-  name: 'Table',
-  price: 8000,
-  isSold: false,
-});
-
-// item1.save();
-
-const item2 = new Item({
-  name: 'Computer',
-  price: 50000,
-  isSold: true,
-  imageUrl:
-    'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxzZWFyY2h8M3x8Y29tcHV0ZXJ8ZW58MHx8MHx8&auto=format&fit=crop&w=500&q=60',
-});
-// console.log(item2);
-
+// Serve static files
 app.use(express.static(path.resolve(__dirname, '../client/build')));
 
-app.get('/api', (req, res) => {
-  Item.find({ isSold: false }, function (err, foundItems) {
-    if (foundItems) {
-      res.send(foundItems);
-      //   console.log(foundItems);
-    } else console.log(err);
-  });
+// Routes
+app.get('/api', async (req, res) => {
+  try {
+    const foundItems = await Item.find({ isSold: false });
+    res.send(foundItems);
+  } catch (err) {
+    console.error(err);
+  }
 });
 
-app.post('/new-item', (req, res) => {
+app.post('/new-item', async (req, res) => {
   const data = req.body[0];
-  const itemName = data.itemName;
-  const itemPrice = data.itemPrice;
-  const itemImgUrl = data.itemImgUrl;
-  const itemDescription = data.itemDescription;
-  const userName = data.userName;
-  const userId = data.userId;
-  // console.log(userName);
-
   const newItem = new Item({
-    name: itemName,
-    price: itemPrice,
+    name: data.itemName,
+    price: data.itemPrice,
     isSold: false,
-    imageUrl: itemImgUrl,
-    description: itemDescription,
+    imageUrl: data.itemImgUrl,
+    description: data.itemDescription,
   });
 
-  newItem.save((err) =>
-    !err
-      ? User.findOne({ _id: userId }, (err, foundUser) => {
-          !err &&
-            User.findOneAndUpdate(
-              //Adding new item in Seller's listings page
-              { _id: foundUser._id },
-              { listedItems: [...foundUser.listedItems, newItem] },
-              { returnOriginal: false },
-              (err, updatedUser) => {
-                !err
-                  ? res.send(JSON.stringify(updatedUser)) &&
-                    console.log('superFunPoop')
-                  : res.send('poop') && console.log(err + 'poop');
-              }
-            );
-        })
-      : console.log(err)
-  );
+  try {
+    await newItem.save();
+    const foundUser = await User.findById(data.userId);
+    foundUser.listedItems.push(newItem);
+    const updatedUser = await foundUser.save();
+    res.send(JSON.stringify(updatedUser));
+  } catch (err) {
+    console.error(err);
+  }
 });
 
-app.post('/buy-item', (req, res) => {
+app.post('/buy-item', async (req, res) => {
   const data = req.body[0];
   const itemId = data.itemId;
   const userId = data.userId;
-  // console.log(data);
 
-  //Setting Sell status to Sold in Seller's MyAccount Listing Page
-  Item.findOne({ _id: itemId }, (err, foundedItem) => {
-    User.findOne(
-      { listedItems: { $in: [foundedItem] } },
-      (err, foundedUser) => {
-        User.findOneAndUpdate(
-          { _id: foundedUser._id, 'listedItems._id': itemId },
-          { $set: { 'listedItems.$.isSold': true } },
-          { returnOriginal: false },
-          (err, updatedUser) => {
-            !err ? '' : console.log(err);
-          }
-        );
-      }
+  try {
+    const foundedItem = await Item.findById(itemId);
+    const foundedUser = await User.findOne({
+      listedItems: { $in: [foundedItem] },
+    });
+    await User.updateOne(
+      { _id: foundedUser._id, 'listedItems._id': itemId },
+      { $set: { 'listedItems.$.isSold': true } }
     );
-  }) &&
-    Item.findOneAndUpdate(
-      //Setting Item sell status to Sold in ItemsDB
-      { _id: itemId },
-      { isSold: true },
-      { returnOriginal: false },
-      (err, updatedItem) => {
-        !err
-          ? User.findOne({ _id: userId }, (err, foundUser) => {
-              !err &&
-                User.findOneAndUpdate(
-                  //Adding New Item to Buyer's Bought items list
-                  { _id: foundUser._id },
-                  { boughtItems: [...foundUser.boughtItems, updatedItem] },
-                  { returnOriginal: false },
-                  (err, updatedUser) => {
-                    !err
-                      ? res.send(JSON.stringify(updatedUser)) &&
-                        console.log('superFunPoopaMania')
-                      : res.send('poop') && console.log(err + 'poop');
-                  }
-                ) &&
-                User.findOneAndUpdate(
-                  { _id: userId },
-                  { $pull: { cartItems: { _id: itemId } } },
-                  { returnOriginal: false },
-                  (err, updated) =>
-                    !err ? console.log('success') : console.log(err)
-                );
-            })
-          : console.log(err);
-      }
+    await Item.findByIdAndUpdate(itemId, { isSold: true });
+    const foundUser = await User.findById(userId);
+    foundUser.boughtItems.push(foundedItem);
+    await foundUser.save();
+    await User.updateOne(
+      { _id: userId },
+      { $pull: { cartItems: { _id: itemId } } }
     );
+    res.send(JSON.stringify(foundUser));
+  } catch (err) {
+    console.error(err);
+  }
 });
-app.post('/wishlist', (req, res) => {
+
+app.post('/wishlist', async (req, res) => {
   const data = req.body[0];
   const itemId = data.itemId;
   const userId = data.userId;
-  // console.log(data);
 
-  Item.findOne({ _id: itemId }, (err, foundItem) => {
-    User.findOne(
-      { _id: userId, wishlist: { $in: [foundItem] } },
-      (err, foundUser) => {
-        foundUser
-          ? User.findOneAndUpdate(
-              { _id: foundUser._id },
-              { $pull: { wishlist: { _id: itemId } } },
-              { returnOriginal: false },
-              (err, updatedUser) => {
-                !err
-                  ? res.send(JSON.stringify(updatedUser)) &&
-                    console.log('removed from wishlist')
-                  : res.send('poop') && console.log(err);
-              }
-            )
-          : User.findOne({ _id: userId }, (err, foundUser) => {
-              User.findOneAndUpdate(
-                { _id: foundUser._id },
-                { wishlist: [...foundUser.wishlist, foundItem] },
-                { returnOriginal: false },
-                (err, updatedUser) => {
-                  !err
-                    ? res.send(JSON.stringify(updatedUser)) &&
-                      console.log('done')
-                    : res.send('poop') && console.log(err);
-                }
-              );
-            });
-      }
-    );
-  });
-});
+  try {
+    const foundItem = await Item.findById(itemId);
+    const foundUser = await User.findOne({
+      _id: userId,
+      wishlist: { $in: [foundItem] },
+    });
 
-app.post('/add-to-cart', (req, res) => {
-  const data = req.body[0];
-  const itemId = data.itemId;
-  const userId = data.userId;
-  // console.log(data);
-
-  Item.findOne({ _id: itemId }, (err, foundItem) => {
-    User.findOne({ _id: userId }, (err, foundUser) => {
-      User.findOneAndUpdate(
+    if (foundUser) {
+      const updatedUser = await User.findOneAndUpdate(
         { _id: foundUser._id },
-        { cartItems: [...foundUser.cartItems, foundItem] },
-        { returnOriginal: false },
-        (err, updatedUser) => {
-          !err
-            ? res.send(JSON.stringify(updatedUser)) && console.log('done')
-            : res.send('poop') && console.log(err);
-        }
+        { $pull: { wishlist: { _id: itemId } } },
+        { new: true }
       );
-    });
-  });
+      res.send(JSON.stringify(updatedUser));
+    } else {
+      const foundUser = await User.findById(userId);
+      foundUser.wishlist.push(foundItem);
+      const updatedUser = await foundUser.save();
+      res.send(JSON.stringify(updatedUser));
+    }
+  } catch (err) {
+    console.error(err);
+  }
 });
 
-app.post('/login', (req, res) => {
+app.post('/add-to-cart', async (req, res) => {
+  const data = req.body[0];
+  const itemId = data.itemId;
+  const userId = data.userId;
+
+  try {
+    const foundItem = await Item.findById(itemId);
+    const foundUser = await User.findById(userId);
+    foundUser.cartItems.push(foundItem);
+    const updatedUser = await foundUser.save();
+    res.send(JSON.stringify(updatedUser));
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+app.post('/login', async (req, res) => {
   const data = req.body[0];
   const username = data.username;
   const password = data.password;
-  // console.log(data);
-  User.findOne({ username: username }, (err, foundUser) => {
-    !err && foundUser
-      ? bcrypt.compare(password, foundUser.password, (err, result) =>
-          !err && result
-            ? res.send(JSON.stringify(foundUser))
-            : console.log(err + 'poop')
-        )
-      : res.send(JSON.stringify('poop'));
-  });
-});
-app.post('/register', (req, res) => {
-  const data = req.body[0];
-  const username = data.username;
-  const password = data.password;
 
-  bcrypt.hash(password, saltRounds, function (err, hash) {
-    const newUser = new User({
-      username: username,
-      password: hash,
-    });
-
-    newUser.save((err) => {
-      //password will be encrypted now
-      if (!err) {
-        res.send(JSON.stringify(username));
+  try {
+    const foundUser = await User.findOne({ username });
+    if (foundUser) {
+      const result = await bcrypt.compare(password, foundUser.password);
+      if (result) {
+        res.send(JSON.stringify(foundUser));
       } else {
-        console.log(err);
+        res.send(JSON.stringify('poop'));
       }
-    });
-  });
+    } else {
+      res.send(JSON.stringify('poop'));
+    }
+  } catch (err) {
+    console.error(err);
+  }
 });
 
+app.post('/register', async (req, res) => {
+  const data = req.body[0];
+  const username = data.username;
+  const password = data.password;
+
+  try {
+    const hash = await bcrypt.hash(password, saltRounds);
+    const newUser = new User({ username, password: hash });
+    await newUser.save();
+    res.send(JSON.stringify(username));
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+// Start server
 const port = process.env.PORT || 3001;
-
-app.listen(port, function () {
-  console.log('Server started on port 3001');
+app.listen(port, () => {
+  console.log(`Server started on port ${port}`);
 });
+
+// require('dotenv').config();
+// const express = require('express');
+// const app = express();
+// const mongoose = require('mongoose');
+// require('mongoose-type-url');
+// mongoose.set('strictQuery', false);
+// const bcrypt = require('bcrypt');
+// const saltRounds = 10;
+// const path = require('path');
+
+// const bodyParser = require('body-parser');
+// app.use(bodyParser.urlencoded({ extended: false }));
+// app.use(bodyParser.json()); // support json encoded bodies
+// const cors = require('cors');
+// const { json } = require('body-parser');
+// const corsOptions = {
+//   origin: '*',
+//   credentials: true, //access-control-allow-credentials:true
+//   optionSuccessStatus: 200,
+// };
+
+// app.use(cors(corsOptions));
+
+// //Connection
+// mongoose.connect(process.env.MONGODB_URI);
+
+// //Schema  i.e the structure we want for data
+// const itemSchema = new mongoose.Schema({
+//   name: {
+//     type: String,
+//     required: true,
+//   },
+//   price: {
+//     type: Number,
+//     required: true,
+//   },
+//   isSold: Boolean,
+//   description: String,
+//   imageUrl: String,
+//   // imageUrl: mongoose.SchemaTypes.Url,
+// });
+
+// const userSchema = new mongoose.Schema({
+//   username: {
+//     type: String,
+//     required: true,
+//   },
+//   password: {
+//     type: String,
+//     required: true,
+//   },
+//   boughtItems: [itemSchema],
+//   listedItems: [itemSchema],
+//   cartItems: [itemSchema],
+//   wishlist: [itemSchema],
+// });
+
+// //Model
+// const Item = mongoose.model('Item', itemSchema);
+// const User = mongoose.model('User', userSchema);
+
+// // console.log(user1);
+// const item1 = new Item({
+//   //new document in the collection
+//   name: 'Table',
+//   price: 8000,
+//   isSold: false,
+// });
+
+// // item1.save();
+
+// const item2 = new Item({
+//   name: 'Computer',
+//   price: 50000,
+//   isSold: true,
+//   imageUrl:
+//     'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxzZWFyY2h8M3x8Y29tcHV0ZXJ8ZW58MHx8MHx8&auto=format&fit=crop&w=500&q=60',
+// });
+// // console.log(item2);
+
+// app.use(express.static(path.resolve(__dirname, '../client/build')));
+
+// app.get('/api', (req, res) => {
+//   Item.find({ isSold: false }, function (err, foundItems) {
+//     if (foundItems) {
+//       res.send(foundItems);
+//       //   console.log(foundItems);
+//     } else console.log(err);
+//   });
+// });
+
+// app.post('/new-item', (req, res) => {
+//   const data = req.body[0];
+//   const itemName = data.itemName;
+//   const itemPrice = data.itemPrice;
+//   const itemImgUrl = data.itemImgUrl;
+//   const itemDescription = data.itemDescription;
+//   const userName = data.userName;
+//   const userId = data.userId;
+//   // console.log(userName);
+
+//   const newItem = new Item({
+//     name: itemName,
+//     price: itemPrice,
+//     isSold: false,
+//     imageUrl: itemImgUrl,
+//     description: itemDescription,
+//   });
+
+//   newItem.save((err) =>
+//     !err
+//       ? User.findOne({ _id: userId }, (err, foundUser) => {
+//           !err &&
+//             User.findOneAndUpdate(
+//               //Adding new item in Seller's listings page
+//               { _id: foundUser._id },
+//               { listedItems: [...foundUser.listedItems, newItem] },
+//               { returnOriginal: false },
+//               (err, updatedUser) => {
+//                 !err
+//                   ? res.send(JSON.stringify(updatedUser)) &&
+//                     console.log('superFunPoop')
+//                   : res.send('poop') && console.log(err + 'poop');
+//               }
+//             );
+//         })
+//       : console.log(err)
+//   );
+// });
+
+// app.post('/buy-item', (req, res) => {
+//   const data = req.body[0];
+//   const itemId = data.itemId;
+//   const userId = data.userId;
+//   // console.log(data);
+
+//   //Setting Sell status to Sold in Seller's MyAccount Listing Page
+//   Item.findOne({ _id: itemId }, (err, foundedItem) => {
+//     User.findOne(
+//       { listedItems: { $in: [foundedItem] } },
+//       (err, foundedUser) => {
+//         User.findOneAndUpdate(
+//           { _id: foundedUser._id, 'listedItems._id': itemId },
+//           { $set: { 'listedItems.$.isSold': true } },
+//           { returnOriginal: false },
+//           (err, updatedUser) => {
+//             !err ? '' : console.log(err);
+//           }
+//         );
+//       }
+//     );
+//   }) &&
+//     Item.findOneAndUpdate(
+//       //Setting Item sell status to Sold in ItemsDB
+//       { _id: itemId },
+//       { isSold: true },
+//       { returnOriginal: false },
+//       (err, updatedItem) => {
+//         !err
+//           ? User.findOne({ _id: userId }, (err, foundUser) => {
+//               !err &&
+//                 User.findOneAndUpdate(
+//                   //Adding New Item to Buyer's Bought items list
+//                   { _id: foundUser._id },
+//                   { boughtItems: [...foundUser.boughtItems, updatedItem] },
+//                   { returnOriginal: false },
+//                   (err, updatedUser) => {
+//                     !err
+//                       ? res.send(JSON.stringify(updatedUser)) &&
+//                         console.log('superFunPoopaMania')
+//                       : res.send('poop') && console.log(err + 'poop');
+//                   }
+//                 ) &&
+//                 User.findOneAndUpdate(
+//                   { _id: userId },
+//                   { $pull: { cartItems: { _id: itemId } } },
+//                   { returnOriginal: false },
+//                   (err, updated) =>
+//                     !err ? console.log('success') : console.log(err)
+//                 );
+//             })
+//           : console.log(err);
+//       }
+//     );
+// });
+// app.post('/wishlist', (req, res) => {
+//   const data = req.body[0];
+//   const itemId = data.itemId;
+//   const userId = data.userId;
+//   // console.log(data);
+
+//   Item.findOne({ _id: itemId }, (err, foundItem) => {
+//     User.findOne(
+//       { _id: userId, wishlist: { $in: [foundItem] } },
+//       (err, foundUser) => {
+//         foundUser
+//           ? User.findOneAndUpdate(
+//               { _id: foundUser._id },
+//               { $pull: { wishlist: { _id: itemId } } },
+//               { returnOriginal: false },
+//               (err, updatedUser) => {
+//                 !err
+//                   ? res.send(JSON.stringify(updatedUser)) &&
+//                     console.log('removed from wishlist')
+//                   : res.send('poop') && console.log(err);
+//               }
+//             )
+//           : User.findOne({ _id: userId }, (err, foundUser) => {
+//               User.findOneAndUpdate(
+//                 { _id: foundUser._id },
+//                 { wishlist: [...foundUser.wishlist, foundItem] },
+//                 { returnOriginal: false },
+//                 (err, updatedUser) => {
+//                   !err
+//                     ? res.send(JSON.stringify(updatedUser)) &&
+//                       console.log('done')
+//                     : res.send('poop') && console.log(err);
+//                 }
+//               );
+//             });
+//       }
+//     );
+//   });
+// });
+
+// app.post('/add-to-cart', (req, res) => {
+//   const data = req.body[0];
+//   const itemId = data.itemId;
+//   const userId = data.userId;
+//   // console.log(data);
+
+//   Item.findOne({ _id: itemId }, (err, foundItem) => {
+//     User.findOne({ _id: userId }, (err, foundUser) => {
+//       User.findOneAndUpdate(
+//         { _id: foundUser._id },
+//         { cartItems: [...foundUser.cartItems, foundItem] },
+//         { returnOriginal: false },
+//         (err, updatedUser) => {
+//           !err
+//             ? res.send(JSON.stringify(updatedUser)) && console.log('done')
+//             : res.send('poop') && console.log(err);
+//         }
+//       );
+//     });
+//   });
+// });
+
+// app.post('/login', (req, res) => {
+//   const data = req.body[0];
+//   const username = data.username;
+//   const password = data.password;
+//   // console.log(data);
+//   User.findOne({ username: username }, (err, foundUser) => {
+//     !err && foundUser
+//       ? bcrypt.compare(password, foundUser.password, (err, result) =>
+//           !err && result
+//             ? res.send(JSON.stringify(foundUser))
+//             : console.log(err + 'poop')
+//         )
+//       : res.send(JSON.stringify('poop'));
+//   });
+// });
+// app.post('/register', (req, res) => {
+//   const data = req.body[0];
+//   const username = data.username;
+//   const password = data.password;
+
+//   bcrypt.hash(password, saltRounds, function (err, hash) {
+//     const newUser = new User({
+//       username: username,
+//       password: hash,
+//     });
+
+//     newUser.save((err) => {
+//       //password will be encrypted now
+//       if (!err) {
+//         res.send(JSON.stringify(username));
+//       } else {
+//         console.log(err);
+//       }
+//     });
+//   });
+// });
+
+// const port = process.env.PORT || 3001;
+
+// app.listen(port, function () {
+//   console.log('Server started on port 3001');
+// });
