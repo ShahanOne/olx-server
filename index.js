@@ -1,7 +1,8 @@
-require('dotenv').config();
+const dotenv = require('dotenv');
+dotenv.config();
+const mongoose = require('mongoose');
 const express = require('express');
 const app = express();
-const mongoose = require('mongoose');
 require('mongoose-type-url');
 mongoose.set('strictQuery', false);
 const bcrypt = require('bcrypt');
@@ -22,8 +23,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 //Connection
-mongoose.connect(process.env.MONGODB_URI);
-
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+});
 //Schema  i.e the structure we want for data
 const itemSchema = new mongoose.Schema({
   name: {
@@ -283,7 +285,6 @@ app.post('/register', (req, res) => {
 });
 
 const port = process.env.PORT || 3001;
-
-app.listen(port, function () {
-  console.log('Server started on port 3001');
+app.listen(port, () => {
+  console.log(`Server started on port ${port}`);
 });
