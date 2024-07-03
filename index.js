@@ -21,14 +21,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Database Connection
-mongoose
-  .connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.error('MongoDB connection error:', err));
+//Connection
+mongoose.connect(process.env.MONGODB_URI);
 
 //Schema  i.e the structure we want for data
 const itemSchema = new mongoose.Schema({
